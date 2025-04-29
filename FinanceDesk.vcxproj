@@ -147,6 +147,7 @@
     <ClCompile Include="src\models\Transaction.cpp" />
     <ClCompile Include="src\Utils.cpp" />
     <ClCompile Include="src\StockMarketSimulator.cpp" />
+    <ClCompile Include="src\models\StockEntry.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="lib\services\GameContext.h" />
@@ -165,6 +166,8 @@
     <ClInclude Include="lib\models\Loan.h" />
     <ClInclude Include="lib\models\Notification.h" />
     <ClInclude Include="lib\StockMarketSimulator.h" />
+    <ClInclude Include="lib\models\StockEntry.h" />
+    <ClInclude Include="lib\models\Share.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

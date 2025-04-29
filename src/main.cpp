@@ -22,23 +22,7 @@ using namespace std;
 int main() {
     GameDatabaseManager::initializeDatabase();
     showIntro();
-    while (true) {
-        ApplicationPages::StartPage();
-        switch (Utils::getIntCInput()) {
-            case 1: {
-                ApplicationPages::LoginPage();
-                break;
-            }
-            case 2: {
-                ApplicationPages::SignupPage();
-                break;
-            }
-            default:
-                cout << "Invalid choice. Please try again." << endl;
-                break;
-            }
-    }
-
+    ApplicationPages::StartPage();
     return 0;
 }
 

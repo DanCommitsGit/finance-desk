@@ -24,4 +24,9 @@ namespace GameDatabaseManager
     vector<Transaction*> getTransactions(int accountID);
     vector<Loan*> getLoans(int accountID);
     vector<Notification*> getNotifications(int accountID);
+
+    void UpdateLastUpdateStockTimestamp(const string& timestamp);
+    void UpdateLastSaveTimestamp(const string& timestamp);
+    string GetLastUpdateStockTimestampStr();
+    string GetLastSaveTimestamp();
 }

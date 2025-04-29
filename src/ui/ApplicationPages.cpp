@@ -14,14 +14,30 @@
 #include <vector>
 #include <iomanip>
 #include <optional>
+#include "../../lib/StockMarketSimulator.h"
 
 using namespace std;
 
 
 // Options: 1. Login, 2. Signup
 void ApplicationPages::StartPage() {
-    cout << "Welcome to the Bank!" << endl;
-    Utils::printChoices("Login", "Signup");
+    while (true) {
+        cout << "Welcome to the Bank!" << endl;
+        Utils::printChoices("Login", "Signup");
+        switch (Utils::getIntCInput()) {
+        case 1: {
+            ApplicationPages::LoginPage();
+            break;
+        }
+        case 2: {
+            ApplicationPages::SignupPage();
+            break;
+        }
+        default:
+            cout << "Invalid choice. Please try again." << endl;
+            break;
+        }
+    }
 }
 
 void ApplicationPages::LoginPage() {
@@ -209,12 +225,67 @@ void ApplicationPages::ManageLoansPage() {
 void ApplicationPages::ManageStocksPage() {
     while (true) {
         cout << "My Portfolio:" << endl; // TODO: show owned stocks and total portfolio value
-        Utils::printChoices("View Stocks", "back");
-        int stockAction;
-        cin >> stockAction;
+        Utils::printChoices("View All Stocks", "back");
+        int stockAction = Utils::getIntCInput();
         switch (stockAction) {
-        case 1: {}
-              // display all in game stocks and current price
+            case 1: {
+                StockMarketSimulator::updateStockHistory();
+			    vector<Stock> stocks = StockMarketSimulator::stocks;
+			    if (stocks.empty()) {
+				    cout << "No stocks found." << endl;
+			    } else {
+				    cout << "Stocks:" << endl;
+				    for (const auto& stock : stocks) {
+					    cout << "Stock ID: " << stock.id
+						     << ", Name: " << stock.name
+						     << ", Price: $" << stock.history.back().price
+						     << endl;
+				    }
+                    cout << "Enter stock ID to buy or sell, or 0 to go back: ";
+                    int stockID = Utils::getIntCInput();
+                    if (stockID == 0) {
+					    break;
+				    }
+                    // Find the stock by ID
+                    auto it = find_if(stocks.begin(), stocks.end(), [stockID](const Stock& stock) {
+						return stock.id == stockID;
+					});
+                    // if stock not found
+                    if (it == stocks.end()) {
+						cout << "Stock not found." << endl;
+						continue;
+					}
+					Stock selectedStock = *it;
+					cout << "Selected stock: " << selectedStock.name << " at $" << selectedStock.history.back().price << endl;
+					cout << "Do you want to buy or sell? (b/s): ";
+					char action = Utils::getCInput()[0];
+					if (action == 'b') {
+						int quantity = Utils::getIntCInput("Enter quantity to buy:\n>>> ");
+						if (quantity <= 0) {
+							cout << "Invalid quantity." << endl;
+							continue;
+						}
+						double totalCost = selectedStock.history.back().price * quantity;
+						if (GameContext::currentLoggedInAccount->balance < totalCost) {
+							cout << "Insufficient balance." << endl;
+							continue;
+						}
+                        StockMarketSimulator::PurchaseStockOnAccount(&GameContext::currentLoggedInAccount.value(), selectedStock.id, quantity);
+						cout << "Bought " << quantity << " shares of " << selectedStock.name << "." << endl;
+					} else if (action == 's') {
+						int quantity = Utils::getIntCInput("Enter quantity to sell:\n>>> ");
+						if (quantity <= 0) {
+							cout << "Invalid quantity." << endl;
+							continue;
+						}
+                        StockMarketSimulator::SellStockOnAccount(&GameContext::currentLoggedInAccount.value(), selectedStock.id, quantity);
+						cout << "Sold " << quantity << " shares of " << selectedStock.name << "." << endl;
+					} else {
+					    cout << "Invalid action." << endl;
+				    }
+			    }
+			    break;
+            }
         }
     }
 }

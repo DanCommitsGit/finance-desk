@@ -53,7 +53,7 @@ void GameDatabaseManager::initializeDatabase() {
 			status TEXT DEFAULT 'active', 
 			FOREIGN KEY (account_id) REFERENCES accounts(id)
 		);
-	)");
+	)"); // term_months should be added as a column in the future
 	db->exec(R"(
 		CREATE TABLE IF NOT EXISTS notifications (
 			id INTEGER PRIMARY KEY, 
@@ -66,7 +66,8 @@ void GameDatabaseManager::initializeDatabase() {
 	)");
 	db->exec(R"(
 		CREATE TABLE game_progress (
-			last_save_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+			last_save_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_stock_update_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	)");
 	db->exec(R"(
@@ -93,6 +94,14 @@ void GameDatabaseManager::initializeDatabase() {
 			SELECT 1 FROM accounts WHERE username = 'bank_funds'
 		);
 	)");
+	db->exec(R"(
+		INSERT INTO game_progress (
+			last_save_timestamp,
+			last_stock_update_timestamp
+		)
+		SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		WHERE NOT EXISTS (SELECT 1 FROM game_progress);
+	)");
 	auto opt = loginToAccount("bank_funds", "");
 	if (opt.has_value()) {
 		GameContext::bankMainAccount = new Account(opt.value());
@@ -102,7 +111,72 @@ void GameDatabaseManager::initializeDatabase() {
 	}
 }
 
+void GameDatabaseManager::UpdateLastUpdateStockTimestamp(const string &timestamp) {
+	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_stock_update_timestamp = ?;");
+	statement->bindText(1, timestamp);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error updating last stock update timestamp: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+void GameDatabaseManager::UpdateLastSaveTimestamp(const string& timestamp) {
+	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_save_timestamp = ?;");
+	statement->bindText(1, timestamp);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error updating last save timestamp: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+string GameDatabaseManager::GetLastUpdateStockTimestampStr() {
+	SQLiteStatement* statement = db->prepareStatement("SELECT last_stock_update_timestamp FROM game_progress;");
+	if (statement->step() == SQLITE_ROW) {
+		return statement->getColumnTextStr(0);
+	}
+	else {
+		cerr << "Error retrieving last stock update timestamp: " << sqlite3_errmsg(db->db) << endl;
+		return "";
+	}
+}
+
+string GameDatabaseManager::GetLastSaveTimestamp() {
+	SQLiteStatement* statement = db->prepareStatement("SELECT last_save_timestamp FROM game_progress;");
+	if (statement->step() == SQLITE_ROW) {
+		return statement->getColumnTextStr(0);
+	}
+	else {
+		cerr << "Error retrieving last save timestamp: " << sqlite3_errmsg(db->db) << endl;
+		return "";
+	}
+}
+
 optional<Account> GameDatabaseManager::loginToAccount(const string &username, const string &password) {
+
+	SQLiteStatement* countStatement = db->prepareStatement("SELECT COUNT(*) FROM game_progress;");
+	if (countStatement->step() == SQLITE_ROW) {
+		int count = countStatement->getColumnInt(0);
+		cout << "Game progress rows: " << count << endl;
+	}
+	else {
+		cerr << "Error counting game progress rows: " << sqlite3_errmsg(db->db) << endl;
+	}
+	// print number of columns in game_progress 
+	SQLiteStatement* columnsStatement = db->prepareStatement("PRAGMA table_info(game_progress);");
+	int columnCount = 0;
+	if (columnsStatement) {
+		while (columnsStatement->step() == SQLITE_ROW) {
+			++columnCount;
+			cout << "Column " << columnCount - 1 << ": " << columnsStatement->getColumnText(1) << endl;
+			// "1" is the column index for "name" in PRAGMA table_info
+		}
+		cout << "Game progress columns: " << columnCount << endl;
+	}
+	else {
+		cerr << "Error preparing statement: " << sqlite3_errmsg(db->db) << endl;
+	}
+
+
+
+
 	SQLiteStatement* statement = GameDatabaseManager::db->prepareStatement(R"(
                 SELECT id, first_name, last_name, username, balance
                 FROM accounts WHERE username = ? AND password = ?;
@@ -148,8 +222,8 @@ Transaction* GameDatabaseManager::TransferMoney(int fromAccountID, int toAccount
 		return nullptr;
 	}
 	
-// Get the transaction ID
-SQLiteStatement* transactionIDStatement = db->prepareStatement("SELECT id, timestamp FROM transactions WHERE id = last_insert_rowid();");
+	// Get the transaction ID
+	SQLiteStatement* transactionIDStatement = db->prepareStatement("SELECT id, timestamp FROM transactions WHERE id = last_insert_rowid();");
 	if (transactionIDStatement->step() != SQLITE_ROW) {
 		cerr << "Error retrieving transaction ID: " << sqlite3_errmsg(db->db) << endl;
 		db->exec("ROLLBACK;");

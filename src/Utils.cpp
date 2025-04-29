@@ -67,3 +67,39 @@ std::vector<std::string> Utils::splitString(const std::string& input, char delim
 
     return result;
 }
+
+string Utils::getCurrentTimestampStr() {
+    auto now = chrono::system_clock::now();
+    auto in_time_t = chrono::system_clock::to_time_t(now);
+
+    struct tm timeinfo;
+    gmtime_s(&timeinfo, &in_time_t);
+
+    stringstream ss;
+    ss << put_time(&timeinfo, "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+chrono::system_clock::time_point Utils::convertTimestampStrToChrono(const std::string& timestamp) {
+    std::tm tm = {};
+    std::istringstream ss(timestamp);
+
+    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    if (ss.fail()) {
+        throw std::runtime_error("Failed to parse timestamp: " + timestamp);
+    }
+
+    // Convert to time_t and then to time_point
+    std::time_t time = _mkgmtime(&tm);
+    return std::chrono::system_clock::from_time_t(time);
+}
+
+string Utils::convertChronoToTimestampStr(std::chrono::system_clock::time_point timePoint) {
+    std::time_t timeT = std::chrono::system_clock::to_time_t(timePoint);
+    std::tm tm = {};
+    gmtime_s(&tm, &timeT);
+
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+    return oss.str();
+}
