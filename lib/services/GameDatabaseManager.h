@@ -7,6 +7,7 @@
 #include <optional>
 #include "../models/Loan.h"
 #include "../models/Notification.h"
+#include "../models/Stock.h"
 #include "../models/Holding.h"
 
 using namespace std;
@@ -27,6 +28,10 @@ namespace GameDatabaseManager
     vector<Notification*> getNotifications(int accountID);
     vector<Holding> getHoldings(int accountID);
     bool saveTrade(Account& account, int stockID, double balanceChange);
+
+    vector<Stock> getStocks();
+    void createStock(const Stock& stock);
+    void addStockPrice(int stockID, const StockEntry& entry);
 
     void UpdateLastUpdateStockTimestamp(const string& timestamp);
     void UpdateLastSaveTimestamp(const string& timestamp);

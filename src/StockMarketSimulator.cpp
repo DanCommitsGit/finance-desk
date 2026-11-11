@@ -29,15 +29,22 @@ void StockMarketSimulator::updateStockHistory() {
 	cout << "Updating stock history..." << endl;
 
 	if (stocks.empty()) {
+		stocks = GameDatabaseManager::getStocks();
+	}
+	if (stocks.empty()) {
 		stocks.push_back(Stock(1, "Apple Inc.", "AAPL"));
 		stocks.push_back(Stock(2, "Microsoft Corporation", "MSFT"));
 		stocks.push_back(Stock(3, "Alphabet Inc.", "GOOGL"));
 		stocks.push_back(Stock(4, "Amazon.com Inc.", "AMZN"));
 		stocks.push_back(Stock(5, "Tesla Inc.", "TSLA"));
 
+		GameDatabaseManager::db->exec("BEGIN TRANSACTION;");
 		for (auto& stock : stocks) {
 			stock.history.push_back({ Utils::getCurrentTimestampStr(), 100, 0 });
+			GameDatabaseManager::createStock(stock);
+			GameDatabaseManager::addStockPrice(stock.id, stock.history.back());
 		}
+		GameDatabaseManager::db->exec("COMMIT;");
 		return;
 	}
 	// Get the last update timestamp and the current timestamp

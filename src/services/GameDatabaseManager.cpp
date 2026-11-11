@@ -123,6 +123,44 @@ void GameDatabaseManager::initializeDatabase() {
 	}
 }
 
+vector<Stock> GameDatabaseManager::getStocks() {
+	vector<Stock> stocks;
+	SQLiteStatement* stockStatement = db->prepareStatement("SELECT id, name, symbol FROM stocks ORDER BY id;");
+	while (stockStatement->step() == SQLITE_ROW) {
+		stocks.push_back(Stock(stockStatement->getColumnInt(0), stockStatement->getColumnTextStr(1), stockStatement->getColumnTextStr(2)));
+	}
+
+	for (auto& stock : stocks) {
+		SQLiteStatement* historyStatement = db->prepareStatement("SELECT timestamp, price, volume FROM stock_price_history WHERE stock_id = ? ORDER BY id;");
+		historyStatement->bindInt(1, stock.id);
+		while (historyStatement->step() == SQLITE_ROW) {
+			stock.history.push_back({ historyStatement->getColumnTextStr(0), historyStatement->getColumnDouble(1), historyStatement->getColumnInt(2) });
+		}
+	}
+	return stocks;
+}
+
+void GameDatabaseManager::createStock(const Stock& stock) {
+	SQLiteStatement* statement = db->prepareStatement("INSERT INTO stocks (id, symbol, name) VALUES (?, ?, ?);");
+	statement->bindInt(1, stock.id);
+	statement->bindText(2, stock.symbol);
+	statement->bindText(3, stock.name);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error inserting stock: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+void GameDatabaseManager::addStockPrice(int stockID, const StockEntry& entry) {
+	SQLiteStatement* statement = db->prepareStatement("INSERT INTO stock_price_history (stock_id, timestamp, price, volume) VALUES (?, ?, ?, ?);");
+	statement->bindInt(1, stockID);
+	statement->bindText(2, entry.timestamp);
+	statement->bindDouble(3, entry.price);
+	statement->bindInt(4, entry.volume);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error inserting stock price: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
 void GameDatabaseManager::UpdateLastUpdateStockTimestamp(const string &timestamp) {
 	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_stock_update_timestamp = ?;");
 	statement->bindText(1, timestamp);
