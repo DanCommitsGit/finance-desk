@@ -15,15 +15,13 @@ string Utils::getCInput() {
     return input;
 }
 
-string Utils::getCInput(string prompt) {
+string Utils::getCInput(string prompt, bool hideInput) {
     cout << prompt;
-    string input;
-    getline(cin, input);
-    return input;
-}
-
-string Utils::getCInput(string prompt, bool hideInput = false) {
-    cout << prompt;
+    if (!hideInput) {
+        string input;
+        getline(cin, input);
+        return input;
+    }
     string password;
     char ch;
     while ((ch = _getch()) != '\r') { // '\r' = Enter key

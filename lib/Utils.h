@@ -16,8 +16,7 @@ namespace Utils
         ((cout << index++ << ". " << args << endl), ...); // what C++ wizardry is this?
     }
     string getCInput();
-    string getCInput(string prompt);
-    string getCInput(string prompt, bool hideInput);
+    string getCInput(string prompt, bool hideInput = false);
     int getIntCInput();
     int getIntCInput(string prompt);
     vector<std::string> splitString(const std::string& input, char delimiter);

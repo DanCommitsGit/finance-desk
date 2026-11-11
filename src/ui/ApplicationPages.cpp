@@ -46,7 +46,6 @@ void ApplicationPages::LoginPage() {
             continue;
         }
 
-        cout << "Enter password: ";
         string password = Utils::getCInput("Enter password:\n>>> ", true);
 
         optional<Account> account = GameDatabaseManager::loginToAccount(username, password);
@@ -64,7 +63,7 @@ void ApplicationPages::SignupPage() {
     string firstName = Utils::getCInput("Enter first name: \n>>> ");
     string lastName = Utils::getCInput("Enter last name: \n>>> ");
     string username = Utils::getCInput("Enter username: \n>>> ");
-    string password = Utils::getCInput("Enter password: \n>>> ");
+    string password = Utils::getCInput("Enter password: \n>>> ", true);
     if (GameDatabaseManager::createAccount(firstName, lastName, username, password)) {
         cout << "Account created successfully!" << endl;
     }
