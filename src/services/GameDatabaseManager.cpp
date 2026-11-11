@@ -271,11 +271,17 @@ optional<Account> GameDatabaseManager::loginToAccount(const string &username, co
 
 Transaction* GameDatabaseManager::TransferMoney(int fromAccountID, int toAccountID, double amount) {
 	db->exec("BEGIN TRANSACTION;");
-	SQLiteStatement* updateFromStatement = db->prepareStatement("UPDATE accounts SET balance = balance - ? WHERE id = ?;");
+	SQLiteStatement* updateFromStatement = db->prepareStatement("UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?;");
 	updateFromStatement->bindDouble(1, amount);
 	updateFromStatement->bindInt(2, fromAccountID);
+	updateFromStatement->bindDouble(3, amount);
 	if (updateFromStatement->step() != SQLITE_DONE) {
 		cerr << "Error updating from account: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return nullptr;
+	}
+	// No row updated: the sender is unknown or has insufficient funds
+	if (sqlite3_changes(db->db) == 0) {
 		db->exec("ROLLBACK;");
 		return nullptr;
 	}

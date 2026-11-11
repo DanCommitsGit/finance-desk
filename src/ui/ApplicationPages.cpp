@@ -158,7 +158,10 @@ void ApplicationPages::PaySomeonePage() {
 			cout << "Invalid amount." << endl;
 			continue;
 		}
-        GameDatabaseManager::TransferMoney(GameContext::currentLoggedInAccount->accountNumber, destinationAccount->accountNumber, amount);
+        if (!GameDatabaseManager::TransferMoney(GameContext::currentLoggedInAccount->accountNumber, destinationAccount->accountNumber, amount)) {
+            cout << "Insufficient funds." << endl;
+            continue;
+        }
         cout << "Payment of $" << amount << " sent to " << destinationAccount->firstName << " " << destinationAccount->lastName << endl;
         break;
     }
