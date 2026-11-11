@@ -135,6 +135,7 @@
     <ClCompile Include="src\services\GameContext.cpp" />
     <ClCompile Include="src\ui\IntroScreen.cpp" />
     <ClCompile Include="src\ui\ApplicationPages.cpp" />
+    <ClCompile Include="src\ui\StocksPage.cpp" />
     <ClCompile Include="src\ui\ANSI.cpp" />
     <ClCompile Include="src\models\Account.cpp" />
     <ClCompile Include="src\services\Authentication.cpp" />

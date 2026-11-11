@@ -51,6 +51,9 @@
     <ClCompile Include="src\ui\ApplicationPages.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\StocksPage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\ui\IntroScreen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

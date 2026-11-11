@@ -30,6 +30,9 @@ namespace Utils
         exit(1);
     }
 
+    string formatMoney(double amount);
+    string formatGainLoss(double gain, double cost);
+
     string getCurrentTimestampStr();
 
     chrono::system_clock::time_point convertTimestampStrToChrono(const std::string& timestamp);

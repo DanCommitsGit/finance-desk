@@ -1,4 +1,5 @@
 #include "../lib/Utils.h"
+#include <cmath>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -102,4 +103,16 @@ string Utils::convertChronoToTimestampStr(std::chrono::system_clock::time_point 
     std::ostringstream oss;
     oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     return oss.str();
+}
+
+string Utils::formatMoney(double amount) {
+    ostringstream text;
+    text << (amount < 0 ? "-$" : "$") << fixed << setprecision(2) << abs(amount);
+    return text.str();
+}
+
+string Utils::formatGainLoss(double gain, double cost) {
+    ostringstream text;
+    text << formatMoney(gain) << " (" << showpos << fixed << setprecision(2) << (cost > 0 ? gain / cost * 100 : 0.0) << "%)";
+    return text.str();
 }
