@@ -65,26 +65,37 @@ void GameDatabaseManager::initializeDatabase() {
 		);
 	)");
 	db->exec(R"(
-		CREATE TABLE game_progress (
+		CREATE TABLE IF NOT EXISTS game_progress (
 			last_save_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_stock_update_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	)");
 	db->exec(R"(
-		CREATE TABLE stocks (
+		CREATE TABLE IF NOT EXISTS stocks (
 			id INTEGER PRIMARY KEY,
 			symbol TEXT NOT NULL,
 			name TEXT
 		);
 	)");
 	db->exec(R"(
-		CREATE TABLE stock_price_history (
+		CREATE TABLE IF NOT EXISTS stock_price_history (
 			id INTEGER PRIMARY KEY,
 			stock_id INTEGER NOT NULL,
 			timestamp DATETIME NOT NULL,
 			price REAL NOT NULL,
 			volume INTEGER,
 			FOREIGN KEY (stock_id) REFERENCES stocks(id)
+		);
+	)");
+	db->exec(R"(
+		CREATE TABLE IF NOT EXISTS holdings (
+			stock_id INTEGER NOT NULL,
+			account_id INTEGER NOT NULL,
+			quantity INTEGER NOT NULL,
+			average_cost REAL NOT NULL,
+			PRIMARY KEY (account_id, stock_id),
+			FOREIGN KEY (stock_id) REFERENCES stocks(id),
+			FOREIGN KEY (account_id) REFERENCES accounts(id)
 		);
 	)");
 	db->exec(R"(
@@ -150,7 +161,6 @@ string GameDatabaseManager::GetLastSaveTimestamp() {
 }
 
 optional<Account> GameDatabaseManager::loginToAccount(const string &username, const string &password) {
-
 	SQLiteStatement* countStatement = db->prepareStatement("SELECT COUNT(*) FROM game_progress;");
 	if (countStatement->step() == SQLITE_ROW) {
 		int count = countStatement->getColumnInt(0);
@@ -173,9 +183,6 @@ optional<Account> GameDatabaseManager::loginToAccount(const string &username, co
 	else {
 		cerr << "Error preparing statement: " << sqlite3_errmsg(db->db) << endl;
 	}
-
-
-
 
 	SQLiteStatement* statement = GameDatabaseManager::db->prepareStatement(R"(
                 SELECT id, first_name, last_name, username, balance
@@ -376,4 +383,17 @@ vector<Notification*> GameDatabaseManager::getNotifications(int accountID) {
 		notifications.push_back(new Notification(id, accountID, message, timestamp, isRead));
 	}
 	return notifications;
+}
+
+vector<Holding> GameDatabaseManager::getHoldings(int accountID) {
+	SQLiteStatement* statement = GameDatabaseManager::db->prepareStatement("SELECT stock_id, quantity, average_cost FROM holdings WHERE account_id = ?;");
+	statement->bindInt(1, accountID);
+	vector<Holding> holdings;
+	while (statement->step() == SQLITE_ROW) {
+		int stockID = statement->getColumnInt(0);
+		int quantity = statement->getColumnInt(1);
+		double averageCost = statement->getColumnDouble(2);
+		holdings.push_back(Holding { stockID, quantity, averageCost });
+	}
+	return holdings;
 }

@@ -7,6 +7,7 @@
 #include <optional>
 #include "../models/Loan.h"
 #include "../models/Notification.h"
+#include "../models/Holding.h"
 
 using namespace std;
 
@@ -24,9 +25,11 @@ namespace GameDatabaseManager
     vector<Transaction*> getTransactions(int accountID);
     vector<Loan*> getLoans(int accountID);
     vector<Notification*> getNotifications(int accountID);
+    vector<Holding> getHoldings(int accountID);
 
     void UpdateLastUpdateStockTimestamp(const string& timestamp);
     void UpdateLastSaveTimestamp(const string& timestamp);
     string GetLastUpdateStockTimestampStr();
     string GetLastSaveTimestamp();
+    
 }

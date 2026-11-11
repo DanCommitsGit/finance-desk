@@ -4,7 +4,7 @@
 #include <iostream>
 #include <vector>
 #include "../SQLiteDB.h"
-#include "Share.h"
+#include "Holding.h"
 
 using namespace std;
 
@@ -16,7 +16,7 @@ public:
 	string firstName;
 	string lastName;
 	double balance;
-	std::vector<Share> portfolio;
+	std::vector<Holding> portfolio;
 
 	Account(int accountNumber, const string& firstName, const string& lastName, const string& username, double balance) : accountNumber(accountNumber), firstName(firstName), lastName(lastName), username(username), balance(balance) {}
 

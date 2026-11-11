@@ -1,8 +1,8 @@
 #pragma once
-struct Share
+struct Holding
 {
 	int stockID;
 	int quantity;
-	double buyPrice;
+	double averageCost;
 };
 

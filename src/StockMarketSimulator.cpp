@@ -81,8 +81,16 @@ void StockMarketSimulator::PurchaseStockOnAccount(Account* account, int stockID,
 
 	account->balance -= totalCost;
 
-	// add the stock to the account's portfolio (id, amount, current price)
-	account->portfolio.push_back({ it->id, amountOfShares, it->history.back().price });
+	double price = it->history.back().price;
+	auto holding = std::find_if(account->portfolio.begin(), account->portfolio.end(),
+		[stockID](const Holding& share) { return share.stockID == stockID; });
+	if (holding == account->portfolio.end()) {
+		account->portfolio.push_back(Holding { stockID, amountOfShares, price });
+	} else {
+		int totalQuantity = holding->quantity + amountOfShares;
+		holding->averageCost = (holding->quantity * holding->averageCost + amountOfShares * price) / totalQuantity;
+		holding->quantity = totalQuantity;
+	}
 }
 
 void StockMarketSimulator::SellStockOnAccount(Account* account, int stockID, int amountOfShares) {
