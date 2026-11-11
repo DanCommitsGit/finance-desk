@@ -20,8 +20,23 @@ using namespace std;
 
 // Options: 1. Login, 2. Signup
 void ApplicationPages::StartPage() {
-    cout << "Welcome to the Bank!" << endl;
-    Utils::printChoices("Login", "Signup");
+    while (true) {
+        cout << "Welcome to the Bank!" << endl;
+        Utils::printChoices("Login", "Signup");
+        switch (Utils::getIntCInput()) {
+        case 1: {
+            ApplicationPages::LoginPage();
+            break;
+        }
+        case 2: {
+            ApplicationPages::SignupPage();
+            break;
+        }
+        default:
+            cout << "Invalid choice. Please try again." << endl;
+            break;
+        }
+    }
 }
 
 void ApplicationPages::LoginPage() {
@@ -202,19 +217,6 @@ void ApplicationPages::ManageLoansPage() {
 				cout << "Loan taken out successfully!" << endl;*/
 				break;
 			}
-        }
-    }
-}
-
-void ApplicationPages::ManageStocksPage() {
-    while (true) {
-        cout << "My Portfolio:" << endl; // TODO: show owned stocks and total portfolio value
-        Utils::printChoices("View Stocks", "back");
-        int stockAction;
-        cin >> stockAction;
-        switch (stockAction) {
-        case 1: {}
-              // display all in game stocks and current price
         }
     }
 }

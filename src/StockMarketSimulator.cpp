@@ -1,1 +1,150 @@
 #include "../lib/StockMarketSimulator.h"
+#include "../lib/Utils.h"
+#include "../lib/models/Account.h"
+#include "../lib/models/Stock.h"
+#include "../lib/services/GameDatabaseManager.h"
+#include <iostream>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <ctime>
+
+using namespace std;
+
+std::vector<Stock> StockMarketSimulator::stocks;
+
+static constexpr long long tickIntervalSeconds = 60;
+static constexpr chrono::hours historyRetention{ 48 };
+static constexpr long long maximumTicksPerUpdate = chrono::duration_cast<chrono::seconds>(historyRetention).count() / tickIntervalSeconds;
+
+double StockMarketSimulator::simulateStockTick(double currentPrice) {
+    // Create a RNG and a uniform distribution
+    static random_device rd;
+    static mt19937 gen(rd());
+    static uniform_real_distribution<> dis(-1.0, 1.0);
+
+    // Generate a random percentage change between -1% and +1%
+    double change = dis(gen);
+    double newPrice = currentPrice * (1 + change / 100);  // Apply change to the current price
+    return newPrice;
+}
+
+void StockMarketSimulator::updateStockHistory() {
+	cout << "Updating stock history..." << endl;
+
+	if (stocks.empty()) {
+		stocks = GameDatabaseManager::getStocks();
+	}
+	if (stocks.empty()) {
+		stocks.push_back(Stock(1, "Apple Inc.", "AAPL"));
+		stocks.push_back(Stock(2, "Microsoft Corporation", "MSFT"));
+		stocks.push_back(Stock(3, "Alphabet Inc.", "GOOGL"));
+		stocks.push_back(Stock(4, "Amazon.com Inc.", "AMZN"));
+		stocks.push_back(Stock(5, "Tesla Inc.", "TSLA"));
+
+		string seedTimestampStr = Utils::getCurrentTimestampStr();
+		GameDatabaseManager::db->exec("BEGIN TRANSACTION;");
+		for (auto& stock : stocks) {
+			stock.history.push_back({ seedTimestampStr, 100, 0 });
+			GameDatabaseManager::createStock(stock);
+			GameDatabaseManager::addStockPrice(stock.id, stock.history.back());
+		}
+		GameDatabaseManager::UpdateLastUpdateStockTimestamp(seedTimestampStr);
+		GameDatabaseManager::db->exec("COMMIT;");
+		return;
+	}
+	// Get the last update timestamp and the current timestamp
+	string lastUpdateTimestampStr = GameDatabaseManager::GetLastUpdateStockTimestampStr();
+	auto lastUpdateTimestamp = Utils::convertTimestampStrToChrono(lastUpdateTimestampStr);
+	auto currentTimestamp = Utils::convertTimestampStrToChrono(Utils::getCurrentTimestampStr());
+
+	// Calculate time difference in seconds
+	auto timeDiff = chrono::duration_cast<chrono::seconds>(currentTimestamp - lastUpdateTimestamp).count();
+
+	cout << "Last update timestamp: " << lastUpdateTimestampStr << endl;
+	cout << "Time since last update: " << timeDiff << " seconds." << endl;
+
+	long long elapsedTicks = timeDiff / tickIntervalSeconds;
+	long long ticksToSimulate = min(elapsedTicks, maximumTicksPerUpdate);
+	auto lastTickTimestamp = lastUpdateTimestamp + chrono::seconds(elapsedTicks * tickIntervalSeconds);
+	string historyCutoffStr = Utils::convertChronoToTimestampStr(currentTimestamp - historyRetention);
+
+	GameDatabaseManager::db->exec("BEGIN TRANSACTION;");
+	for (auto& stock : stocks) {
+		size_t firstNewEntryIndex = stock.history.size();
+		for (long long tickIndex = 1; tickIndex <= ticksToSimulate; ++tickIndex) {
+			auto tickTimestamp = lastTickTimestamp - chrono::seconds((ticksToSimulate - tickIndex) * tickIntervalSeconds);
+			double newPrice = simulateStockTick(stock.history.back().price);
+			stock.history.push_back({ Utils::convertChronoToTimestampStr(tickTimestamp), newPrice, 0 });
+		}
+		GameDatabaseManager::addStockPrices(stock.id, stock.history, firstNewEntryIndex);
+
+		// Expired entries go, but the latest price always stays
+		auto firstKeptEntry = find_if(stock.history.begin(), stock.history.end() - 1, [&historyCutoffStr](const StockEntry& entry) {
+			return entry.timestamp >= historyCutoffStr;
+		});
+		stock.history.erase(stock.history.begin(), firstKeptEntry);
+	}
+
+	GameDatabaseManager::deleteStockPricesOlderThan(historyCutoffStr);
+	GameDatabaseManager::UpdateLastUpdateStockTimestamp(Utils::convertChronoToTimestampStr(lastTickTimestamp));
+	GameDatabaseManager::db->exec("COMMIT;");
+}
+
+void StockMarketSimulator::PurchaseStockOnAccount(Account* account, int stockID, int amountOfShares) {
+    // find the stock
+	auto it = std::find_if(stocks.begin(), stocks.end(), [stockID](const Stock& stock) {
+		return stock.id == stockID;
+	});
+    // if doesnt exist, return
+	if (it == stocks.end()) {
+		Utils::ThrowFatalError("Stock with ID " + std::to_string(stockID) + " does not exist.");
+	}
+
+	// check if the account has enough money
+	double totalCost = it->history.back().price * amountOfShares;
+	if (account->balance < totalCost) {
+		Utils::ThrowFatalError("Insufficient funds in account to purchase stock.");
+	}
+
+	account->balance -= totalCost;
+
+	double price = it->history.back().price;
+	auto holding = std::find_if(account->portfolio.begin(), account->portfolio.end(),
+		[stockID](const Holding& share) { return share.stockID == stockID; });
+	if (holding == account->portfolio.end()) {
+		account->portfolio.push_back(Holding { stockID, amountOfShares, price });
+	} else {
+		int totalQuantity = holding->quantity + amountOfShares;
+		holding->averageCost = (holding->quantity * holding->averageCost + amountOfShares * price) / totalQuantity;
+		holding->quantity = totalQuantity;
+	}
+
+	GameDatabaseManager::saveTrade(*account, stockID, -totalCost);
+}
+
+bool StockMarketSimulator::SellStockOnAccount(Account* account, int stockID, int amountOfShares) {
+// find the stock
+	auto it = std::find_if(stocks.begin(), stocks.end(), [stockID](const Stock& stock) {
+		return stock.id == stockID;
+	});
+	// if doesnt exist, return
+	if (it == stocks.end()) {
+		Utils::ThrowFatalError("Stock with ID " + std::to_string(stockID) + " does not exist.");
+	}
+
+	auto holding = std::find_if(account->portfolio.begin(), account->portfolio.end(),
+		[stockID](const Holding& candidate) { return candidate.stockID == stockID; });
+	if (holding == account->portfolio.end() || holding->quantity < amountOfShares) {
+		return false;
+	}
+
+	double proceeds = it->history.back().price * amountOfShares;
+	account->balance += proceeds;
+	holding->quantity -= amountOfShares;
+	if (holding->quantity == 0) {
+		account->portfolio.erase(holding);
+	}
+
+	return GameDatabaseManager::saveTrade(*account, stockID, proceeds);
+}

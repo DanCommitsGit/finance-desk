@@ -12,6 +12,7 @@
 #include <vector>
 #include "../../include/sqlite3.h"
 #include <optional>
+#include <algorithm>
 
 using namespace std;
 
@@ -53,7 +54,7 @@ void GameDatabaseManager::initializeDatabase() {
 			status TEXT DEFAULT 'active', 
 			FOREIGN KEY (account_id) REFERENCES accounts(id)
 		);
-	)");
+	)"); // term_months should be added as a column in the future
 	db->exec(R"(
 		CREATE TABLE IF NOT EXISTS notifications (
 			id INTEGER PRIMARY KEY, 
@@ -65,19 +66,20 @@ void GameDatabaseManager::initializeDatabase() {
 		);
 	)");
 	db->exec(R"(
-		CREATE TABLE game_progress (
-			last_save_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+		CREATE TABLE IF NOT EXISTS game_progress (
+			last_save_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_stock_update_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	)");
 	db->exec(R"(
-		CREATE TABLE stocks (
+		CREATE TABLE IF NOT EXISTS stocks (
 			id INTEGER PRIMARY KEY,
 			symbol TEXT NOT NULL,
 			name TEXT
 		);
 	)");
 	db->exec(R"(
-		CREATE TABLE stock_price_history (
+		CREATE TABLE IF NOT EXISTS stock_price_history (
 			id INTEGER PRIMARY KEY,
 			stock_id INTEGER NOT NULL,
 			timestamp DATETIME NOT NULL,
@@ -87,11 +89,30 @@ void GameDatabaseManager::initializeDatabase() {
 		);
 	)");
 	db->exec(R"(
+		CREATE TABLE IF NOT EXISTS holdings (
+			stock_id INTEGER NOT NULL,
+			account_id INTEGER NOT NULL,
+			quantity INTEGER NOT NULL,
+			average_cost REAL NOT NULL,
+			PRIMARY KEY (account_id, stock_id),
+			FOREIGN KEY (stock_id) REFERENCES stocks(id),
+			FOREIGN KEY (account_id) REFERENCES accounts(id)
+		);
+	)");
+	db->exec(R"(
 		INSERT INTO accounts (first_name, last_name, username, password, balance, is_system_account)
 		SELECT 'Bank', 'Account', 'bank_funds', '', 1000000.0, 1
 		WHERE NOT EXISTS (
 			SELECT 1 FROM accounts WHERE username = 'bank_funds'
 		);
+	)");
+	db->exec(R"(
+		INSERT INTO game_progress (
+			last_save_timestamp,
+			last_stock_update_timestamp
+		)
+		SELECT CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		WHERE NOT EXISTS (SELECT 1 FROM game_progress);
 	)");
 	auto opt = loginToAccount("bank_funds", "");
 	if (opt.has_value()) {
@@ -102,7 +123,136 @@ void GameDatabaseManager::initializeDatabase() {
 	}
 }
 
+vector<Stock> GameDatabaseManager::getStocks() {
+	vector<Stock> stocks;
+	SQLiteStatement* stockStatement = db->prepareStatement("SELECT id, name, symbol FROM stocks ORDER BY id;");
+	while (stockStatement->step() == SQLITE_ROW) {
+		stocks.push_back(Stock(stockStatement->getColumnInt(0), stockStatement->getColumnTextStr(1), stockStatement->getColumnTextStr(2)));
+	}
+
+	for (auto& stock : stocks) {
+		SQLiteStatement* historyStatement = db->prepareStatement("SELECT timestamp, price, volume FROM stock_price_history WHERE stock_id = ? ORDER BY id;");
+		historyStatement->bindInt(1, stock.id);
+		while (historyStatement->step() == SQLITE_ROW) {
+			stock.history.push_back({ historyStatement->getColumnTextStr(0), historyStatement->getColumnDouble(1), historyStatement->getColumnInt(2) });
+		}
+	}
+	return stocks;
+}
+
+void GameDatabaseManager::createStock(const Stock& stock) {
+	SQLiteStatement* statement = db->prepareStatement("INSERT INTO stocks (id, symbol, name) VALUES (?, ?, ?);");
+	statement->bindInt(1, stock.id);
+	statement->bindText(2, stock.symbol);
+	statement->bindText(3, stock.name);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error inserting stock: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+void GameDatabaseManager::addStockPrice(int stockID, const StockEntry& entry) {
+	SQLiteStatement* statement = db->prepareStatement("INSERT INTO stock_price_history (stock_id, timestamp, price, volume) VALUES (?, ?, ?, ?);");
+	statement->bindInt(1, stockID);
+	statement->bindText(2, entry.timestamp);
+	statement->bindDouble(3, entry.price);
+	statement->bindInt(4, entry.volume);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error inserting stock price: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+void GameDatabaseManager::addStockPrices(int stockID, const vector<StockEntry>& entries, size_t firstEntryIndex) {
+	SQLiteStatement* statement = db->prepareStatement("INSERT INTO stock_price_history (stock_id, timestamp, price, volume) VALUES (?, ?, ?, ?);");
+	for (size_t entryIndex = firstEntryIndex; entryIndex < entries.size(); ++entryIndex) {
+		const StockEntry& entry = entries[entryIndex];
+		statement->bindInt(1, stockID);
+		statement->bindText(2, entry.timestamp);
+		statement->bindDouble(3, entry.price);
+		statement->bindInt(4, entry.volume);
+		if (statement->step() != SQLITE_DONE) {
+			cerr << "Error inserting stock price: " << sqlite3_errmsg(db->db) << endl;
+			break;
+		}
+		sqlite3_reset(statement->stmt);
+	}
+	delete statement;
+}
+
+void GameDatabaseManager::deleteStockPricesOlderThan(const string& cutoffTimestamp) {
+	SQLiteStatement* statement = db->prepareStatement(R"(
+		DELETE FROM stock_price_history
+		WHERE timestamp < ?
+		AND id NOT IN (SELECT MAX(id) FROM stock_price_history GROUP BY stock_id);
+	)");
+	statement->bindText(1, cutoffTimestamp);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error deleting old stock prices: " << sqlite3_errmsg(db->db) << endl;
+	}
+	delete statement;
+}
+
+void GameDatabaseManager::UpdateLastUpdateStockTimestamp(const string &timestamp) {
+	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_stock_update_timestamp = ?;");
+	statement->bindText(1, timestamp);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error updating last stock update timestamp: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+void GameDatabaseManager::UpdateLastSaveTimestamp(const string& timestamp) {
+	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_save_timestamp = ?;");
+	statement->bindText(1, timestamp);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error updating last save timestamp: " << sqlite3_errmsg(db->db) << endl;
+	}
+}
+
+string GameDatabaseManager::GetLastUpdateStockTimestampStr() {
+	SQLiteStatement* statement = db->prepareStatement("SELECT last_stock_update_timestamp FROM game_progress;");
+	if (statement->step() == SQLITE_ROW) {
+		return statement->getColumnTextStr(0);
+	}
+	else {
+		cerr << "Error retrieving last stock update timestamp: " << sqlite3_errmsg(db->db) << endl;
+		return "";
+	}
+}
+
+string GameDatabaseManager::GetLastSaveTimestamp() {
+	SQLiteStatement* statement = db->prepareStatement("SELECT last_save_timestamp FROM game_progress;");
+	if (statement->step() == SQLITE_ROW) {
+		return statement->getColumnTextStr(0);
+	}
+	else {
+		cerr << "Error retrieving last save timestamp: " << sqlite3_errmsg(db->db) << endl;
+		return "";
+	}
+}
+
 optional<Account> GameDatabaseManager::loginToAccount(const string &username, const string &password) {
+	SQLiteStatement* countStatement = db->prepareStatement("SELECT COUNT(*) FROM game_progress;");
+	if (countStatement->step() == SQLITE_ROW) {
+		int count = countStatement->getColumnInt(0);
+		cout << "Game progress rows: " << count << endl;
+	}
+	else {
+		cerr << "Error counting game progress rows: " << sqlite3_errmsg(db->db) << endl;
+	}
+	// print number of columns in game_progress 
+	SQLiteStatement* columnsStatement = db->prepareStatement("PRAGMA table_info(game_progress);");
+	int columnCount = 0;
+	if (columnsStatement) {
+		while (columnsStatement->step() == SQLITE_ROW) {
+			++columnCount;
+			cout << "Column " << columnCount - 1 << ": " << columnsStatement->getColumnText(1) << endl;
+			// "1" is the column index for "name" in PRAGMA table_info
+		}
+		cout << "Game progress columns: " << columnCount << endl;
+	}
+	else {
+		cerr << "Error preparing statement: " << sqlite3_errmsg(db->db) << endl;
+	}
+
 	SQLiteStatement* statement = GameDatabaseManager::db->prepareStatement(R"(
                 SELECT id, first_name, last_name, username, balance
                 FROM accounts WHERE username = ? AND password = ?;
@@ -110,7 +260,9 @@ optional<Account> GameDatabaseManager::loginToAccount(const string &username, co
 	statement->bindText(1, username);
 	statement->bindText(2, password);
 	if (statement->step() == SQLITE_ROW) {
-		return Account(statement->getColumnInt(0), statement->getColumnTextStr(1), statement->getColumnTextStr(2), statement->getColumnTextStr(3), statement->getColumnDouble(4));
+		Account account(statement->getColumnInt(0), statement->getColumnTextStr(1), statement->getColumnTextStr(2), statement->getColumnTextStr(3), statement->getColumnDouble(4));
+		account.portfolio = getHoldings(account.accountNumber);
+		return account;
 	}
 	else {
 		return nullopt;
@@ -148,8 +300,8 @@ Transaction* GameDatabaseManager::TransferMoney(int fromAccountID, int toAccount
 		return nullptr;
 	}
 	
-// Get the transaction ID
-SQLiteStatement* transactionIDStatement = db->prepareStatement("SELECT id, timestamp FROM transactions WHERE id = last_insert_rowid();");
+	// Get the transaction ID
+	SQLiteStatement* transactionIDStatement = db->prepareStatement("SELECT id, timestamp FROM transactions WHERE id = last_insert_rowid();");
 	if (transactionIDStatement->step() != SQLITE_ROW) {
 		cerr << "Error retrieving transaction ID: " << sqlite3_errmsg(db->db) << endl;
 		db->exec("ROLLBACK;");
@@ -302,4 +454,68 @@ vector<Notification*> GameDatabaseManager::getNotifications(int accountID) {
 		notifications.push_back(new Notification(id, accountID, message, timestamp, isRead));
 	}
 	return notifications;
+}
+
+vector<Holding> GameDatabaseManager::getHoldings(int accountID) {
+	SQLiteStatement* statement = GameDatabaseManager::db->prepareStatement("SELECT stock_id, quantity, average_cost FROM holdings WHERE account_id = ?;");
+	statement->bindInt(1, accountID);
+	vector<Holding> holdings;
+	while (statement->step() == SQLITE_ROW) {
+		int stockID = statement->getColumnInt(0);
+		int quantity = statement->getColumnInt(1);
+		double averageCost = statement->getColumnDouble(2);
+		holdings.push_back(Holding { stockID, quantity, averageCost });
+	}
+	return holdings;
+}
+
+// Applies balanceChange to the account and writes the account's holding for stockID (deleting the row when it no longer owns any) in one transaction. account.balance is then reloaded from the database.
+bool GameDatabaseManager::saveTrade(Account& account, int stockID, double balanceChange) {
+	db->exec("BEGIN TRANSACTION;");
+
+	SQLiteStatement* balanceStatement = db->prepareStatement("UPDATE accounts SET balance = balance + ? WHERE id = ?;");
+	balanceStatement->bindDouble(1, balanceChange);
+	balanceStatement->bindInt(2, account.accountNumber);
+	if (balanceStatement->step() != SQLITE_DONE) {
+		cerr << "Error updating balance: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return false;
+	}
+
+	auto holding = find_if(account.portfolio.begin(), account.portfolio.end(), [stockID](const Holding& candidate) {
+		return candidate.stockID == stockID;
+	});
+	SQLiteStatement* holdingStatement;
+	if (holding != account.portfolio.end()) {
+		holdingStatement = db->prepareStatement(R"(
+			INSERT INTO holdings (account_id, stock_id, quantity, average_cost) VALUES (?, ?, ?, ?)
+			ON CONFLICT(account_id, stock_id) DO UPDATE SET quantity = excluded.quantity, average_cost = excluded.average_cost;
+		)");
+		holdingStatement->bindInt(1, account.accountNumber);
+		holdingStatement->bindInt(2, stockID);
+		holdingStatement->bindInt(3, holding->quantity);
+		holdingStatement->bindDouble(4, holding->averageCost);
+	}
+	else {
+		holdingStatement = db->prepareStatement("DELETE FROM holdings WHERE account_id = ? AND stock_id = ?;");
+		holdingStatement->bindInt(1, account.accountNumber);
+		holdingStatement->bindInt(2, stockID);
+	}
+	if (holdingStatement->step() != SQLITE_DONE) {
+		cerr << "Error saving holding: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return false;
+	}
+
+	SQLiteStatement* readBalanceStatement = db->prepareStatement("SELECT balance FROM accounts WHERE id = ?;");
+	readBalanceStatement->bindInt(1, account.accountNumber);
+	if (readBalanceStatement->step() != SQLITE_ROW) {
+		cerr << "Error reading balance: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return false;
+	}
+	account.balance = readBalanceStatement->getColumnDouble(0);
+
+	db->exec("COMMIT;");
+	return true;
 }
