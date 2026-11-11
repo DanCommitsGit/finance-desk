@@ -26,6 +26,7 @@ namespace GameDatabaseManager
     vector<Loan*> getLoans(int accountID);
     vector<Notification*> getNotifications(int accountID);
     vector<Holding> getHoldings(int accountID);
+    bool saveTrade(Account& account, int stockID, double balanceChange);
 
     void UpdateLastUpdateStockTimestamp(const string& timestamp);
     void UpdateLastSaveTimestamp(const string& timestamp);

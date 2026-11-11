@@ -278,8 +278,12 @@ void ApplicationPages::ManageStocksPage() {
 							cout << "Invalid quantity." << endl;
 							continue;
 						}
-                        StockMarketSimulator::SellStockOnAccount(&GameContext::currentLoggedInAccount.value(), selectedStock.id, quantity);
-						cout << "Sold " << quantity << " shares of " << selectedStock.name << "." << endl;
+                        if (StockMarketSimulator::SellStockOnAccount(&GameContext::currentLoggedInAccount.value(), selectedStock.id, quantity)) {
+							cout << "Sold " << quantity << " shares of " << selectedStock.name << "." << endl;
+						}
+						else {
+							cout << "Failed to sell. You don't own that many shares." << endl;
+						}
 					} else {
 					    cout << "Invalid action." << endl;
 				    }

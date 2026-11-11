@@ -91,9 +91,11 @@ void StockMarketSimulator::PurchaseStockOnAccount(Account* account, int stockID,
 		holding->averageCost = (holding->quantity * holding->averageCost + amountOfShares * price) / totalQuantity;
 		holding->quantity = totalQuantity;
 	}
+
+	GameDatabaseManager::saveTrade(*account, stockID, -totalCost);
 }
 
-void StockMarketSimulator::SellStockOnAccount(Account* account, int stockID, int amountOfShares) {
+bool StockMarketSimulator::SellStockOnAccount(Account* account, int stockID, int amountOfShares) {
 // find the stock
 	auto it = std::find_if(stocks.begin(), stocks.end(), [stockID](const Stock& stock) {
 		return stock.id == stockID;
@@ -102,4 +104,19 @@ void StockMarketSimulator::SellStockOnAccount(Account* account, int stockID, int
 	if (it == stocks.end()) {
 		Utils::ThrowFatalError("Stock with ID " + std::to_string(stockID) + " does not exist.");
 	}
+
+	auto holding = std::find_if(account->portfolio.begin(), account->portfolio.end(),
+		[stockID](const Holding& candidate) { return candidate.stockID == stockID; });
+	if (holding == account->portfolio.end() || holding->quantity < amountOfShares) {
+		return false;
+	}
+
+	double proceeds = it->history.back().price * amountOfShares;
+	account->balance += proceeds;
+	holding->quantity -= amountOfShares;
+	if (holding->quantity == 0) {
+		account->portfolio.erase(holding);
+	}
+
+	return GameDatabaseManager::saveTrade(*account, stockID, proceeds);
 }

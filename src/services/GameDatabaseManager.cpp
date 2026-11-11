@@ -12,6 +12,7 @@
 #include <vector>
 #include "../../include/sqlite3.h"
 #include <optional>
+#include <algorithm>
 
 using namespace std;
 
@@ -191,7 +192,9 @@ optional<Account> GameDatabaseManager::loginToAccount(const string &username, co
 	statement->bindText(1, username);
 	statement->bindText(2, password);
 	if (statement->step() == SQLITE_ROW) {
-		return Account(statement->getColumnInt(0), statement->getColumnTextStr(1), statement->getColumnTextStr(2), statement->getColumnTextStr(3), statement->getColumnDouble(4));
+		Account account(statement->getColumnInt(0), statement->getColumnTextStr(1), statement->getColumnTextStr(2), statement->getColumnTextStr(3), statement->getColumnDouble(4));
+		account.portfolio = getHoldings(account.accountNumber);
+		return account;
 	}
 	else {
 		return nullopt;
@@ -396,4 +399,55 @@ vector<Holding> GameDatabaseManager::getHoldings(int accountID) {
 		holdings.push_back(Holding { stockID, quantity, averageCost });
 	}
 	return holdings;
+}
+
+// Applies balanceChange to the account and writes the account's holding for stockID (deleting the row when it no longer owns any) in one transaction. account.balance is then reloaded from the database.
+bool GameDatabaseManager::saveTrade(Account& account, int stockID, double balanceChange) {
+	db->exec("BEGIN TRANSACTION;");
+
+	SQLiteStatement* balanceStatement = db->prepareStatement("UPDATE accounts SET balance = balance + ? WHERE id = ?;");
+	balanceStatement->bindDouble(1, balanceChange);
+	balanceStatement->bindInt(2, account.accountNumber);
+	if (balanceStatement->step() != SQLITE_DONE) {
+		cerr << "Error updating balance: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return false;
+	}
+
+	auto holding = find_if(account.portfolio.begin(), account.portfolio.end(), [stockID](const Holding& candidate) {
+		return candidate.stockID == stockID;
+	});
+	SQLiteStatement* holdingStatement;
+	if (holding != account.portfolio.end()) {
+		holdingStatement = db->prepareStatement(R"(
+			INSERT INTO holdings (account_id, stock_id, quantity, average_cost) VALUES (?, ?, ?, ?)
+			ON CONFLICT(account_id, stock_id) DO UPDATE SET quantity = excluded.quantity, average_cost = excluded.average_cost;
+		)");
+		holdingStatement->bindInt(1, account.accountNumber);
+		holdingStatement->bindInt(2, stockID);
+		holdingStatement->bindInt(3, holding->quantity);
+		holdingStatement->bindDouble(4, holding->averageCost);
+	}
+	else {
+		holdingStatement = db->prepareStatement("DELETE FROM holdings WHERE account_id = ? AND stock_id = ?;");
+		holdingStatement->bindInt(1, account.accountNumber);
+		holdingStatement->bindInt(2, stockID);
+	}
+	if (holdingStatement->step() != SQLITE_DONE) {
+		cerr << "Error saving holding: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return false;
+	}
+
+	SQLiteStatement* readBalanceStatement = db->prepareStatement("SELECT balance FROM accounts WHERE id = ?;");
+	readBalanceStatement->bindInt(1, account.accountNumber);
+	if (readBalanceStatement->step() != SQLITE_ROW) {
+		cerr << "Error reading balance: " << sqlite3_errmsg(db->db) << endl;
+		db->exec("ROLLBACK;");
+		return false;
+	}
+	account.balance = readBalanceStatement->getColumnDouble(0);
+
+	db->exec("COMMIT;");
+	return true;
 }
