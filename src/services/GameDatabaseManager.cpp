@@ -161,6 +161,23 @@ void GameDatabaseManager::addStockPrice(int stockID, const StockEntry& entry) {
 	}
 }
 
+void GameDatabaseManager::addStockPrices(int stockID, const vector<StockEntry>& entries, size_t firstEntryIndex) {
+	SQLiteStatement* statement = db->prepareStatement("INSERT INTO stock_price_history (stock_id, timestamp, price, volume) VALUES (?, ?, ?, ?);");
+	for (size_t entryIndex = firstEntryIndex; entryIndex < entries.size(); ++entryIndex) {
+		const StockEntry& entry = entries[entryIndex];
+		statement->bindInt(1, stockID);
+		statement->bindText(2, entry.timestamp);
+		statement->bindDouble(3, entry.price);
+		statement->bindInt(4, entry.volume);
+		if (statement->step() != SQLITE_DONE) {
+			cerr << "Error inserting stock price: " << sqlite3_errmsg(db->db) << endl;
+			break;
+		}
+		sqlite3_reset(statement->stmt);
+	}
+	delete statement;
+}
+
 void GameDatabaseManager::UpdateLastUpdateStockTimestamp(const string &timestamp) {
 	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_stock_update_timestamp = ?;");
 	statement->bindText(1, timestamp);

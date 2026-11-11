@@ -32,6 +32,7 @@ namespace GameDatabaseManager
     vector<Stock> getStocks();
     void createStock(const Stock& stock);
     void addStockPrice(int stockID, const StockEntry& entry);
+    void addStockPrices(int stockID, const vector<StockEntry>& entries, size_t firstEntryIndex);
 
     void UpdateLastUpdateStockTimestamp(const string& timestamp);
     void UpdateLastSaveTimestamp(const string& timestamp);

@@ -60,14 +60,18 @@ void StockMarketSimulator::updateStockHistory() {
 	cout << "Time since last update: " << timeDiff << " seconds." << endl;
 
 	// Simulate stock ticks for the time difference
+	GameDatabaseManager::db->exec("BEGIN TRANSACTION;");
 	for (auto& stock : stocks) {
+		size_t firstNewEntryIndex = stock.history.size();
 		for (int i = 0; i < timeDiff; ++i) {
 			double newPrice = simulateStockTick(stock.history.back().price);
 			stock.history.push_back({ Utils::convertChronoToTimestampStr(currentTimestamp), newPrice, 0 });
 		}
+		GameDatabaseManager::addStockPrices(stock.id, stock.history, firstNewEntryIndex);
 	}
 
 	GameDatabaseManager::UpdateLastUpdateStockTimestamp(Utils::convertChronoToTimestampStr(currentTimestamp));
+	GameDatabaseManager::db->exec("COMMIT;");
 }
 
 void StockMarketSimulator::PurchaseStockOnAccount(Account* account, int stockID, int amountOfShares) {
