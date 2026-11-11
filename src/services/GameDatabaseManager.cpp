@@ -178,6 +178,19 @@ void GameDatabaseManager::addStockPrices(int stockID, const vector<StockEntry>& 
 	delete statement;
 }
 
+void GameDatabaseManager::deleteStockPricesOlderThan(const string& cutoffTimestamp) {
+	SQLiteStatement* statement = db->prepareStatement(R"(
+		DELETE FROM stock_price_history
+		WHERE timestamp < ?
+		AND id NOT IN (SELECT MAX(id) FROM stock_price_history GROUP BY stock_id);
+	)");
+	statement->bindText(1, cutoffTimestamp);
+	if (statement->step() != SQLITE_DONE) {
+		cerr << "Error deleting old stock prices: " << sqlite3_errmsg(db->db) << endl;
+	}
+	delete statement;
+}
+
 void GameDatabaseManager::UpdateLastUpdateStockTimestamp(const string &timestamp) {
 	SQLiteStatement* statement = db->prepareStatement("UPDATE game_progress SET last_stock_update_timestamp = ?;");
 	statement->bindText(1, timestamp);

@@ -33,6 +33,8 @@ namespace GameDatabaseManager
     void createStock(const Stock& stock);
     void addStockPrice(int stockID, const StockEntry& entry);
     void addStockPrices(int stockID, const vector<StockEntry>& entries, size_t firstEntryIndex);
+    // Deletes price rows with a timestamp before the cutoff, except each stock's latest row.
+    void deleteStockPricesOlderThan(const string& cutoffTimestamp);
 
     void UpdateLastUpdateStockTimestamp(const string& timestamp);
     void UpdateLastSaveTimestamp(const string& timestamp);

@@ -13,6 +13,10 @@ using namespace std;
 
 std::vector<Stock> StockMarketSimulator::stocks;
 
+static constexpr long long tickIntervalSeconds = 60;
+static constexpr chrono::hours historyRetention{ 48 };
+static constexpr long long maximumTicksPerUpdate = chrono::duration_cast<chrono::seconds>(historyRetention).count() / tickIntervalSeconds;
+
 double StockMarketSimulator::simulateStockTick(double currentPrice) {
     // Create a RNG and a uniform distribution
     static random_device rd;
@@ -38,12 +42,14 @@ void StockMarketSimulator::updateStockHistory() {
 		stocks.push_back(Stock(4, "Amazon.com Inc.", "AMZN"));
 		stocks.push_back(Stock(5, "Tesla Inc.", "TSLA"));
 
+		string seedTimestampStr = Utils::getCurrentTimestampStr();
 		GameDatabaseManager::db->exec("BEGIN TRANSACTION;");
 		for (auto& stock : stocks) {
-			stock.history.push_back({ Utils::getCurrentTimestampStr(), 100, 0 });
+			stock.history.push_back({ seedTimestampStr, 100, 0 });
 			GameDatabaseManager::createStock(stock);
 			GameDatabaseManager::addStockPrice(stock.id, stock.history.back());
 		}
+		GameDatabaseManager::UpdateLastUpdateStockTimestamp(seedTimestampStr);
 		GameDatabaseManager::db->exec("COMMIT;");
 		return;
 	}
@@ -56,21 +62,32 @@ void StockMarketSimulator::updateStockHistory() {
 	auto timeDiff = chrono::duration_cast<chrono::seconds>(currentTimestamp - lastUpdateTimestamp).count();
 
 	cout << "Last update timestamp: " << lastUpdateTimestampStr << endl;
-	cout << "Updating last update timestamp to current time: " << Utils::convertChronoToTimestampStr(currentTimestamp) << endl;
 	cout << "Time since last update: " << timeDiff << " seconds." << endl;
 
-	// Simulate stock ticks for the time difference
+	long long elapsedTicks = timeDiff / tickIntervalSeconds;
+	long long ticksToSimulate = min(elapsedTicks, maximumTicksPerUpdate);
+	auto lastTickTimestamp = lastUpdateTimestamp + chrono::seconds(elapsedTicks * tickIntervalSeconds);
+	string historyCutoffStr = Utils::convertChronoToTimestampStr(currentTimestamp - historyRetention);
+
 	GameDatabaseManager::db->exec("BEGIN TRANSACTION;");
 	for (auto& stock : stocks) {
 		size_t firstNewEntryIndex = stock.history.size();
-		for (int i = 0; i < timeDiff; ++i) {
+		for (long long tickIndex = 1; tickIndex <= ticksToSimulate; ++tickIndex) {
+			auto tickTimestamp = lastTickTimestamp - chrono::seconds((ticksToSimulate - tickIndex) * tickIntervalSeconds);
 			double newPrice = simulateStockTick(stock.history.back().price);
-			stock.history.push_back({ Utils::convertChronoToTimestampStr(currentTimestamp), newPrice, 0 });
+			stock.history.push_back({ Utils::convertChronoToTimestampStr(tickTimestamp), newPrice, 0 });
 		}
 		GameDatabaseManager::addStockPrices(stock.id, stock.history, firstNewEntryIndex);
+
+		// Expired entries go, but the latest price always stays
+		auto firstKeptEntry = find_if(stock.history.begin(), stock.history.end() - 1, [&historyCutoffStr](const StockEntry& entry) {
+			return entry.timestamp >= historyCutoffStr;
+		});
+		stock.history.erase(stock.history.begin(), firstKeptEntry);
 	}
 
-	GameDatabaseManager::UpdateLastUpdateStockTimestamp(Utils::convertChronoToTimestampStr(currentTimestamp));
+	GameDatabaseManager::deleteStockPricesOlderThan(historyCutoffStr);
+	GameDatabaseManager::UpdateLastUpdateStockTimestamp(Utils::convertChronoToTimestampStr(lastTickTimestamp));
 	GameDatabaseManager::db->exec("COMMIT;");
 }
 
