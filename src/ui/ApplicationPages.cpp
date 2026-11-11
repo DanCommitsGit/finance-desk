@@ -290,6 +290,8 @@ void ApplicationPages::ManageStocksPage() {
 			    }
 			    break;
             }
+            case 2:
+                return;
         }
     }
 }
